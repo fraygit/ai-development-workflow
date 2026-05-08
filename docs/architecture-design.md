@@ -23,7 +23,7 @@ graph TB
     subgraph Platform["AIDevFlow Platform — GCP"]
         subgraph PublicLayer["Public Layer (Cloud Load Balancing + Cloud Armor)"]
             WEB[Web UI\nNext.js / Cloud Run]
-            WHR[Webhook Receiver\nGo / Cloud Run]
+            WHR[Webhook Receiver\nNode.js + Fastify / Cloud Run]
             APIGW[API Gateway\nCloud Load Balancing]
         end
 
@@ -119,15 +119,16 @@ The tenant-facing dashboard: workflow designer, run trace, task library, admin c
 
 ---
 
-### 2. Webhook Receiver — Go
+### 2. Webhook Receiver — Node.js + Fastify
 
 The only public-facing inbound endpoint. Receives webhooks from Jira, SonarCloud, GCP Pub/Sub push subscriptions, and generic HTTP callers.
 
-**Why Go (not Node.js):**
-- Stateless, high-throughput, latency-sensitive — Go is significantly faster and uses less memory than Node.js for this workload
-- Small Docker images (~10MB vs ~150MB for Node)
-- Cheap on Cloud Run: Go handles more concurrent requests per instance
-- No shared code needed with the rest of the platform at runtime — just validates and publishes
+**Why Node.js (same as everything else):**
+- Single language across the entire backend — one team, one set of tooling, shared utilities
+- Shared middleware with the Coordination API (HMAC validation, rate limiting helpers, Redis client) — no duplication
+- Fastify handles high-throughput async IO efficiently; Cloud Run horizontal scaling handles load spikes
+- Shared TypeScript types for structured Pub/Sub event payloads
+- Simpler monorepo: one Dockerfile pattern, one CI/CD build pipeline
 
 **Responsibilities:**
 - Validate webhook signatures (Jira HMAC-SHA256, SonarCloud secret, GCP Pub/Sub JWT)
@@ -375,7 +376,7 @@ sequenceDiagram
 | **Client state** | Zustand | Lightweight, TypeScript-first |
 | **Data fetching** | TanStack Query | Server state, caching, optimistic updates |
 | **Coordination API** | Fastify 5 (Node.js, TypeScript) | 2× faster than Express; JSON schema validation built-in |
-| **Webhook Receiver** | Go 1.23 (Chi router) | High throughput, tiny memory footprint, small image |
+| **Webhook Receiver** | Fastify 5 (Node.js, TypeScript) | Same stack as Coordination API; shared middleware and utils |
 | **ORM** | Prisma 6 | Type-safe queries, migration management, RLS support |
 | **Job queue** | BullMQ (Redis-backed) | Reliable, retry logic, delayed jobs |
 | **YAML parsing** | js-yaml | Parse workflow YAML; generate CI/CD YAML |
@@ -391,55 +392,24 @@ sequenceDiagram
 
 ### Alternative Languages Considered
 
-```mermaid
-quadrantChart
-    title Language Trade-offs: Dev Speed vs Runtime Efficiency
-    x-axis Low Dev Speed --> High Dev Speed
-    y-axis Low Runtime Efficiency --> High Runtime Efficiency
-    quadrant-1 Sweet spot for specific services
-    quadrant-2 Production workhorse
-    quadrant-3 Avoid for this project
-    quadrant-4 Rapid prototyping
-    Go: [0.55, 0.85]
-    Rust: [0.15, 0.98]
-    Python FastAPI: [0.80, 0.35]
-    Node.js TypeScript: [0.75, 0.60]
-    Bun TypeScript: [0.78, 0.70]
-    Elixir Phoenix: [0.50, 0.75]
-    Java Spring: [0.40, 0.72]
-    Deno TypeScript: [0.72, 0.62]
-```
+**Node.js (TypeScript) — the only backend language**
 
-**Node.js (TypeScript) — primary language for Coordination API, Compiler, Worker**
-- Monorepo with Web UI — shared types, shared Prisma client, shared YAML schemas
-- IO-bound workload (DB reads, secret fetches, external API calls) — Node is ideal
-- Largest ecosystem of npm packages for the integrations needed
-- Fastify provides enough performance overhead; horizontal scaling on Cloud Run handles load
+Everything runs Node.js. One language, one ecosystem, one Dockerfile pattern, one team.
 
-**Go — Webhook Receiver only**
-- Stateless, high-throughput, latency-critical
-- Ideal for HMAC validation + Pub/Sub publish under load
-- 10MB Docker image vs 150MB for Node
-- No shared code needed with the TypeScript codebase at runtime
+- **Monorepo benefit:** Web UI (Next.js), Coordination API, Webhook Receiver, Compiler, and Worker all share TypeScript types, the Prisma client, YAML schemas, and utility functions (HMAC validation, rate limiting, Secret Manager client). No duplication, no interface mismatch between services.
+- **Performance is sufficient:** every service is IO-bound (DB reads, Redis calls, external API calls, Pub/Sub publish). Node's async model is ideal for IO-bound work. Cloud Run horizontal scaling handles bursts — adding instances is cheaper than optimising a single instance.
+- **Fastify not Express:** Fastify 5 is ~2× faster than Express, has first-class TypeScript support, JSON schema validation built in, and a clean plugin system. Use it across all services.
+- **Cold start:** Cloud Run keeps instances warm for active tenants. For low-traffic tenants that scale to zero, a Node cold start is ~300ms — acceptable for webhook receivers (caller waits slightly longer) and invisible for the Web UI (Cloud CDN serves the shell).
 
-**Bun — future consideration**
-- Drop-in Node.js replacement, 3-4× faster startup (important for Cloud Run cold starts)
-- Built-in TypeScript transpilation, no `ts-node` needed
-- Not yet production-battle-tested for all npm packages — adopt in 12 months when ecosystem is more stable
+**Other languages considered and why Node.js wins:**
 
-**Elixir/Phoenix — considered for real-time (WebSocket) features**
-- Phoenix Channels are excellent for the Run Dashboard live updates
-- But: adds a second language to the backend team; Phoenix LiveView covers most real-time needs without WebSockets
-- Decision: use Server-Sent Events (SSE) from Fastify for live run updates instead — simpler, works with Cloud Run
-
-**Python (FastAPI) — rejected**
-- GIL is a liability for concurrent webhook handling
-- Slower cold starts than Node on Cloud Run
-- No shared types with TypeScript frontend
-
-**Rust — rejected for v1**
-- Development velocity too slow for a startup finding product-market fit
-- Revisit for the Workflow Compiler once the YAML schema is stable and performance becomes a bottleneck
+| Language | Considered for | Why not |
+|---|---|---|
+| Go | Webhook Receiver | Faster and smaller image, but splits the team and eliminates shared code. Not worth it — Cloud Run scales horizontally. |
+| Bun | All services | Drop-in Node replacement, faster startup. Not yet stable enough for all npm packages (2026). Revisit in 12 months. |
+| Python (FastAPI) | Prototyping | Slower cold starts, no shared types with frontend, GIL limits concurrent IO. |
+| Elixir/Phoenix | Real-time dashboard | Excellent for WebSockets but adds a second language. Server-Sent Events from Fastify is sufficient for live run updates. |
+| Rust | Workflow Compiler | Best performance for pure transformation work, but development velocity too slow for finding PMF. Revisit once the YAML schema stabilises. |
 
 ---
 
@@ -461,10 +431,10 @@ aidevflow/
 │   │   │   └── plugins/        # Fastify plugins (auth, rate-limit, cors)
 │   │   └── Dockerfile
 │   │
-│   ├── webhook-receiver/       # Go — inbound webhook handler
-│   │   ├── internal/
-│   │   │   ├── handlers/       # jira.go, sonarcloud.go, pubsub.go
-│   │   │   ├── validator/      # HMAC verification
+│   ├── webhook-receiver/       # Node.js + Fastify — inbound webhook handler
+│   │   ├── src/
+│   │   │   ├── handlers/       # jira.ts, sonarcloud.ts, pubsub.ts
+│   │   │   ├── validator/      # HMAC verification (shared utils)
 │   │   │   └── publisher/      # Pub/Sub client
 │   │   └── Dockerfile
 │   │
@@ -481,6 +451,12 @@ aidevflow/
 │   ├── db/                     # Prisma schema, migrations, seed data
 │   │   ├── schema.prisma
 │   │   └── migrations/
+│   ├── utils/                  # Shared Node.js utilities — used by ALL services
+│   │   ├── hmac.ts             # Webhook signature validation (Jira, SonarCloud)
+│   │   ├── secret-manager.ts   # GCP Secret Manager client wrapper
+│   │   ├── pubsub.ts           # Pub/Sub publisher client
+│   │   ├── redis.ts            # Redis client (rate limiting, deduplication)
+│   │   └── logger.ts           # Structured logging (Cloud Logging format)
 │   ├── skill-library/          # Built-in skill YAML files (versioned)
 │   │   └── skills/
 │   │       ├── code-implementer/1.0.0.yaml
@@ -821,12 +797,12 @@ The MVP proves the Jira-assignment-chaining model works and gets real tenants us
 
 ## Brainstorm: What Could Change the Architecture
 
-**If Bun matures (6–12 months):** Replace Node.js with Bun across all TypeScript services. Faster cold starts on Cloud Run (Bun boots in ~50ms vs Node's ~300ms), built-in TypeScript, smaller images. Same ecosystem, near-zero migration cost.
+**If Bun matures (6–12 months):** Replace Node.js with Bun across all services. Faster cold starts (~50ms vs ~300ms), built-in TypeScript, smaller images. Same npm ecosystem — near-zero migration cost since everything is already TypeScript. Single swap across the entire monorepo.
 
 **If Cloud Run volume justifies it:** Move from Cloud SQL `db-g1-small` to **AlloyDB** (Postgres-compatible, 2–4× faster read throughput, columnar engine for analytics queries on run history). Cost: ~3× but handles 10× the concurrent connections.
 
 **If real-time dashboard becomes a bottleneck:** Replace Server-Sent Events with **Cloud Pub/Sub push subscriptions to browser** via a WebSocket proxy (Fastify + `ws`). Or adopt **Elixir Phoenix** for just the real-time gateway — it handles millions of concurrent WebSocket connections cheaply.
 
-**If the Workflow Compiler becomes complex:** Extract into a dedicated service written in **Rust** — the compiler is a pure transformation function (YAML in → YAML out), no IO, no shared state. Rust would make it ~10× faster and completely memory-safe. Worth doing once the YAML schema is stable.
+**If the Workflow Compiler becomes a bottleneck:** Extract it into a dedicated Cloud Run service (currently it can live as a module inside the Coordination API). The compiler is a pure transformation function (YAML in → YAML out) — if performance becomes a concern, horizontal Cloud Run scaling handles it without changing the language. Consider Rust only if compilation time exceeds 10 seconds at high volume; that's unlikely until 10,000+ tenants.
 
 **If multi-region data residency becomes a sales requirement for every enterprise deal:** Consider **Terraform Cloud + multi-region Atlantis** for tenant-specific infrastructure rather than shared regional stacks. Each Enterprise tenant gets their own Cloud Run namespace and Cloud SQL instance. Operational overhead is high — only for Enterprise tier at $1,000+/month.

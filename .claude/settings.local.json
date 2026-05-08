@@ -3,7 +3,15 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:developers.openai.com)"
+      "WebFetch(domain:developers.openai.com)",
+      "Bash(mkdir -p \"c:\\\\Projects\\\\Git\\\\ai-development-workflow\\\\packages\\\\skill-library\\\\skills\\\\frontend-team-lead\")",
+      "Bash(mkdir -p \"c:/Projects/Git/ai-development-workflow/.claude/commands\")",
+      "Bash(mkdir -p \"c:/Projects/Git/ai-development-workflow/.claude/skills/frontend-lead\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Projects\\Git\\ai-development-workflow\\packages\\skill-library\\skills",
+      "c:\\Projects\\Git\\ai-development-workflow\\.claude",
+      "c:\\Projects\\Git\\ai-development-workflow\\.claude\\skills"
     ]
   }
 }
