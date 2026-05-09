@@ -156,6 +156,64 @@ Excluded from MVP: `cli` tasks (code-implementer, quality-gate-fixer), SonarClou
 5. Minimum 2 reviewers on PRs touching `skills/` or `workflows/` directories.
 6. Claude subprocess output scanned for secret patterns before passing downstream.
 
+## Epic & Task Tracking
+
+Implementation work is tracked in `docs/epic/` as a two-level markdown hierarchy.
+
+### Structure
+
+```
+docs/epic/
+└── <epic-name>/
+    ├── 0.0-task-breakdown.md       # Master index — all tasks with status table
+    ├── <story>.0-<story-title>.md  # Story definition (acceptance criteria, notes)
+    ├── <story>.<task>-<title>.md   # Individual task (skill, priority, AC, notes)
+    └── ...
+```
+
+**Active epics:**
+
+| Epic | Index | Stories |
+|---|---|---|
+| Authentication & Onboarding | [docs/epic/authentication-onboarding/0.0-task-breakdown.md](docs/epic/authentication-onboarding/0.0-task-breakdown.md) | 1.0–6.0 (27 tasks) |
+
+### Task file naming convention
+
+- `0.0-task-breakdown.md` — master index for the epic (always present)
+- `<N>.0-<title>.md` — story definition file (e.g. `1.0-tenant-signup-and-org-creation.md`)
+- `<N>.<M>-<title>.md` — task file (e.g. `1.1-local-dev-environment-setup.md`)
+
+### Status tracking
+
+Task status is tracked in the `0.0-task-breakdown.md` index table in the **Status** column:
+
+| Symbol | Meaning |
+|---|---|
+| `—` | Not started |
+| `In Progress` | Currently being worked on |
+| `Done` | Completed |
+| `Blocked` | Blocked — reason noted in the task file |
+| `Deferred` | Deferred to post-MVP or later sprint |
+
+When a task is completed, the project-manager (or specialist skill) must update:
+1. The **Status** column in `0.0-task-breakdown.md`.
+2. The acceptance criteria checkboxes (`- [x]`) in the individual task file.
+
+### Pivots and scope changes
+
+If requirements change or a task needs to be revised:
+1. Update the individual task file with the new AC and a `> **Pivoted:** reason` note.
+2. Update `0.0-task-breakdown.md` if the title or skill assignment changes.
+3. Note the change in the story `.0` file under a `## Change Log` section if it affects acceptance criteria.
+
+---
+
+## File Operation Permissions
+
+**Edit and Write operations within `c:\Projects\Git\ai-development-workflow\` are pre-approved.** Claude Code will auto-approve all file edits and new file creation in this repository directory without prompting. This is configured in `.claude/settings.local.json`.
+
+---
+
 ## Cost Reference
 
 At launch (~50 tenants): ~$496/month GCP infra. Dominant cost is Cloud SQL (fixed per region). Cloud Run scales to zero for idle tenants. See `docs/architecture-design.md` for full breakdown and scale projections.

@@ -19,11 +19,13 @@ Your job is to be the **single entry point** for any task or prompt. You underst
 
 ## On Load — Do This First
 
-1. Read `docs/requirements.md` in full using the Read tool. This is the **authoritative requirements document** — it consolidates product vision, architecture, execution model, UI surfaces, backend services, MVP scope, and open questions from all four roles.
-2. Read the task or prompt in `$ARGUMENTS`.
-3. Classify the work (see Routing Rules below).
-4. Before routing or acting, check whether the request is **in MVP scope**. If it is out of scope, say so clearly and offer to add it to the post-MVP backlog instead of silently proceeding.
-5. If the request is ambiguous, ask one focused clarifying question — not a list of five. Prefer acting with reasonable assumptions and stating them explicitly.
+1. Read `docs/requirements.md` in full using the Read tool. This is the **authoritative requirements document**.
+2. Glob `docs/epic/**/0.0-task-breakdown.md` to discover all active epic indexes.
+3. Read each `0.0-task-breakdown.md` found — these are the live task boards. Know which tasks are not started, in progress, done, blocked, or deferred.
+4. Read the task or prompt in `$ARGUMENTS`.
+5. Classify the work (see Routing Rules below).
+6. Before routing or acting, check whether the request is **in MVP scope**. If out of scope, say so and offer to park it in the post-MVP backlog.
+7. If the request is ambiguous, ask one focused clarifying question. Prefer acting with reasonable assumptions stated explicitly.
 
 ---
 
@@ -38,6 +40,8 @@ Handle these yourself without routing to a specialist:
 - **Requirements clarification** — reading and explaining any part of `docs/requirements.md`
 - **Sprint planning input** — identifying the next logical unit of work and which skills are needed
 - **Dependency mapping** — identifying which tasks must complete before others can start
+- **Task tracking** — updating task status in epic index files and individual task files
+- **Pivot management** — updating task/story files when scope or approach changes
 
 ---
 
@@ -229,6 +233,73 @@ These are final. If a request contradicts one, stop and say so before proceeding
 
 ---
 
+## Epic & Task Tracking
+
+### Task file structure
+
+```
+docs/epic/
+└── <epic-name>/
+    ├── 0.0-task-breakdown.md       # Master index — status table for all tasks
+    ├── <N>.0-<title>.md            # Story definition file
+    └── <N>.<M>-<title>.md         # Individual task file
+```
+
+### Status values used in 0.0-task-breakdown.md
+
+| Status | Meaning |
+|---|---|
+| `—` | Not started |
+| `In Progress` | Currently being worked on |
+| `Done` | Completed |
+| `Blocked` | Blocked — reason noted in task file |
+| `Deferred` | Deferred to post-MVP or later sprint |
+
+### When a task is completed
+
+Update **both** files — do not update only one:
+
+1. In `0.0-task-breakdown.md`: change Status cell from `—` / `In Progress` to `Done`.
+2. In the individual task file (e.g. `1.1-local-dev-environment-setup.md`): tick all completed acceptance criteria checkboxes (`- [x]`). If only partially done, tick the completed items and note what remains.
+
+Example update to `0.0-task-breakdown.md`:
+```markdown
+| [1.1](1.1-local-dev-environment-setup.md) | Local Dev Environment Setup | local-setup | Done |
+```
+
+### When a task is started
+
+Change Status to `In Progress` in `0.0-task-breakdown.md`.
+
+### When a task is blocked
+
+1. Change Status to `Blocked` in `0.0-task-breakdown.md`.
+2. Add a `> **Blocked:** <reason>` callout at the top of the task file.
+
+### When requirements pivot or a task changes
+
+1. Update the individual task file: revise AC, add a `> **Pivoted [date]:** <reason and what changed>` callout.
+2. Update `0.0-task-breakdown.md` if the title, skill, or priority changes.
+3. If the story-level AC changes, add a `## Change Log` section to the `<N>.0` story file.
+
+### Surfacing what's next
+
+When asked "what should we work on next" or "what's the status":
+1. Read all `0.0-task-breakdown.md` files.
+2. Find tasks where Status = `—` whose dependencies are `Done`.
+3. Group by skill (frontend-lead / backend-lead / local-setup).
+4. Report as: "Ready to start", "In Progress", "Blocked", with dependency notes.
+
+### Adding new tasks
+
+When decomposing a new epic or story into tasks:
+1. Create the story file: `docs/epic/<epic>/<N>.0-<title>.md`.
+2. Create each task file: `docs/epic/<epic>/<N>.<M>-<title>.md`.
+3. Add all tasks to `0.0-task-breakdown.md` with Status `—`.
+4. Assign each task a skill and priority.
+
+---
+
 ## How to Respond
 
 For **every** request:
@@ -236,8 +307,10 @@ For **every** request:
 1. **State the classification** — what domain is this? which skill owns it? (one line)
 2. **Check MVP scope** — is it in scope? if not, say so and offer to park it in the post-MVP backlog
 3. **Surface relevant open questions** — does §13 block any part of this?
-4. **Route or act** — either provide the slash command(s) to invoke the right skill(s), or handle coordination tasks directly
-5. **Flag locked decisions at risk** — if the request would violate a locked architectural decision, say so before any other output
+4. **Check task tracking** — if the request relates to a task in `docs/epic/`, read the current status and note it; if the work is being completed, update the task file and index immediately
+5. **Route or act** — either provide the slash command(s) to invoke the right skill(s), or handle coordination tasks directly
+6. **Flag locked decisions at risk** — if the request would violate a locked architectural decision, say so before any other output
+7. **Update task status** — after routing or completing work, update `0.0-task-breakdown.md` and the task file to reflect the new status
 
 ---
 
@@ -253,6 +326,11 @@ For **every** request:
 /project-manager decompose the Webhook Receiver epic into tasks
 /project-manager which open questions block the Run Trace implementation?
 /project-manager write the Jira stories for Plugin Config
+/project-manager task 1.1 is done
+/project-manager what tasks are ready to start?
+/project-manager mark task 2.3 as blocked — waiting on Clerk webhook config
+/project-manager task 3.2 needs to pivot: wizard uses a stepper from shadcn instead of custom
+/project-manager what's the current status of the authentication epic?
 ```
 
 **If `$ARGUMENTS` is provided:**
