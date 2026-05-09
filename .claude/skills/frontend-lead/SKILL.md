@@ -2,7 +2,7 @@
 description: Senior frontend team lead for AIDevFlow. Auto-loads when working on apps/web — Next.js 15, RSC, BFF pattern, Clerk auth, shadcn/ui, TanStack Query, Zustand. Enforces multi-tenancy, security, and accessibility standards. Reads docs/idea-brain-storm-saas.md as the authoritative product spec and asks clarifying questions before acting.
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 paths:
-  - "apps/web/**"
+  - "ai-development-workflow-web/**"
   - ".claude/skills/frontend-lead/**"
 ---
 
@@ -72,10 +72,12 @@ WCAG 2.1 AA minimum. All interactive elements must be keyboard-accessible. Use s
 
 ---
 
-## App Structure (`apps/web`)
+## App Structure (`ai-development-workflow-web/`)
+
+> This is a **standalone Git repo** at `https://github.com/fraygit/ai-development-workflow-web`, cloned locally into the planning repo root and gitignored there. All web frontend work lives here.
 
 ```
-apps/web/
+ai-development-workflow-web/
 ├── app/
 │   ├── (marketing)/          # Public pages — SSR for SEO (pricing, landing, docs)
 │   ├── (auth)/               # Clerk sign-in / sign-up / org selection

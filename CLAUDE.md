@@ -4,13 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-This is the **AIDevFlow** project — currently in the planning and architecture phase. There is no source code yet. The repository contains the design documents that define what will be built.
+This is the **AIDevFlow** project — currently in the planning and architecture phase. The repository contains the design documents and Claude Code skills that define what will be built.
 
 - `docs/idea-brain-storm.md` — original pipeline concept: wrapping Claude Code CLI into an event-driven workflow engine (GCP error → Jira ticket → AI fix → PR → merge)
 - `docs/idea-brain-storm-saas.md` — evolution to a multi-tenant SaaS model
 - `docs/architecture-design.md` — the authoritative architecture document: GCP infra, service breakdown, DB schema, cost model, security design, MVP scope
 
-When code implementation begins, the monorepo will live at `aidevflow/` following the Turborepo structure defined in `docs/architecture-design.md`.
+### Sub-projects (separate Git repos, gitignored here)
+
+| Folder | Repo | Description |
+|---|---|---|
+| `ai-development-workflow-web/` | [fraygit/ai-development-workflow-web](https://github.com/fraygit/ai-development-workflow-web) | Next.js 15 frontend — tenant dashboard, workflow designer, human gate UI |
+
+The remaining monorepo services (`apps/api`, `apps/webhook-receiver`, `apps/compiler`, `packages/*`, `infra/`) will be added as additional sub-project repos as implementation begins, following the Turborepo structure defined in `docs/architecture-design.md`.
 
 ## What AIDevFlow Does
 
@@ -43,12 +49,49 @@ The AI execution engine is **Claude Code CLI**, invoked as a controlled subproce
 
 **Node.js is the only backend language.** Go was considered for the Webhook Receiver but rejected to preserve shared TypeScript types, shared Prisma client, and a single Dockerfile pattern across all services.
 
-## Planned Monorepo Structure
+## Project Structure
+
+The platform is split across multiple Git repositories. The web frontend has already been extracted into its own repo; remaining services will follow as implementation begins.
+
+### Repos
+
+| Folder (local) | GitHub Repo | Status |
+|---|---|---|
+| `ai-development-workflow-web/` | [fraygit/ai-development-workflow-web](https://github.com/fraygit/ai-development-workflow-web) | Active — Next.js 15 frontend |
+| *(planning repo root)* | fraygit/ai-development-workflow | Active — design docs + Claude Code skills |
+| `aidevflow/apps/api/` | *(planned)* | Not started — Fastify Coordination API |
+| `aidevflow/apps/webhook-receiver/` | *(planned)* | Not started — Fastify webhook receiver |
+| `aidevflow/apps/compiler/` | *(planned)* | Not started — workflow YAML compiler |
+
+### Web App Structure (`ai-development-workflow-web/`)
+
+```
+ai-development-workflow-web/          # standalone repo — gitignored in planning repo
+├── app/
+│   ├── (marketing)/                  # Public pages — SSR for SEO
+│   ├── (auth)/                       # Clerk sign-in / sign-up / org selection
+│   └── (dashboard)/                  # Authenticated tenant dashboard
+│       ├── workflows/                # Workflow designer, list, detail, run trace
+│       ├── plugins/                  # Plugin config (GitHub App, GitLab, Jira, AI provider)
+│       ├── repos/                    # Repository registry
+│       ├── runs/                     # Pipeline run history + live trace
+│       └── settings/                 # Tenant settings, team, billing
+├── components/
+│   ├── ui/                           # shadcn/ui primitives
+│   └── [feature]/                    # Feature-specific components
+├── lib/
+│   ├── api-client.ts
+│   ├── query-client.ts
+│   └── auth.ts
+├── middleware.ts
+└── next.config.ts
+```
+
+### Remaining Services (planned — single monorepo `aidevflow/`)
 
 ```
 aidevflow/
 ├── apps/
-│   ├── web/                    # Next.js 15 — tenant dashboard, workflow designer, human gate UI
 │   ├── api/                    # Fastify — Coordination API (state, secrets, service proxying, human gates)
 │   ├── webhook-receiver/       # Fastify — validates inbound webhooks, publishes to Pub/Sub
 │   └── compiler/               # Node.js — compiles workflow YAML → GitHub Actions / GitLab CI YAML
