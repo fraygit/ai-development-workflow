@@ -11,7 +11,8 @@ The project manager reads `docs/requirements.md` (the authoritative requirements
 | Task type | Specialist skill |
 |---|---|
 | User stories, backlog, UX design, sprint ceremonies | `/product-owner` |
-| GCP infra, Terraform, CI/CD, Docker, architecture | `/senior-architect` |
+| Cloud architecture decisions, service selection, cost analysis, multi-cloud strategy | `/senior-architect` |
+| Terraform HCL, Cloud Build, GitLab CI, GitHub Actions, Dockerfiles, GCP ops, monitoring | `/senior-devops` |
 | Fastify, Prisma, BullMQ, backend services, DB schema | `/backend-lead` |
 | Next.js, React, shadcn/ui, TanStack Query, Clerk frontend | `/frontend-lead` |
 | Scope decisions, decomposition, open questions, cross-cutting features | handled directly |

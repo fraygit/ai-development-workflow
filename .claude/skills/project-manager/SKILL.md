@@ -62,19 +62,38 @@ When a request belongs to a specialist domain, respond by:
 ```
 
 ### Route to `/senior-architect` when the request involves:
-- GCP infrastructure (Cloud Run, Cloud SQL, Memorystore, Pub/Sub, Secret Manager)
-- Terraform / IaC
-- CI/CD pipeline design (Cloud Build)
-- Container design (Dockerfile, multi-stage builds)
-- Regional deployment strategy
+- GCP service selection and architectural decisions
+- Regional deployment strategy and trade-offs
 - Cost analysis or capacity planning
-- Security architecture (IAM, VPC, Workload Identity)
+- Security architecture design (IAM model, VPC topology, Workload Identity design)
 - AWS or Azure tenant runner infrastructure advice
-- Any request about "how do we deploy" or "what cloud service should we use"
+- Multi-cloud strategy and platform design
+- Any request about "what cloud service should we use" or "how should we architect X"
 
 **Routing command:**
 ```
 /senior-architect <task description with architecture context>
+```
+
+### Route to `/senior-devops` when the request involves:
+- Writing or reviewing Terraform HCL (modules, region root modules, state config)
+- Cloud Build `cloudbuild.yaml` authorship or review
+- GitLab CI pipeline YAML (`.gitlab-ci.yml`) — compiled output or platform config
+- GitHub Actions workflow YAML (`.github/workflows/*.yml`) — compiled output or platform config
+- Dockerfile authorship or multi-stage build review
+- GitHub App setup, permissions, or private key rotation
+- GitLab Group Access Token provisioning or webhook configuration
+- Branch protection rules configuration (GitLab or GitHub)
+- Workload Identity Federation setup for CI/CD
+- Secret Manager lifecycle operations (create, rotate, mount, disable)
+- Cloud Monitoring alerts, dashboards, or log-based metrics
+- Artifact Registry lifecycle policies or vulnerability scanning
+- Ops runbooks and deployment procedures
+- Any request about "how do we implement/operate X in GCP" or "write the pipeline for X"
+
+**Routing command:**
+```
+/senior-devops <task description with DevOps context>
 ```
 
 ### Route to `/backend-lead` when the request involves:
