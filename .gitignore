@@ -4,5 +4,8 @@ ai-development-workflow-web/
 # POC project — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-poc)
 ai-development-workflow-poc/
 
+# POC sample app — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-sample-nodejs)
+ai-development-workflow-sample-nodejs/
+
 # Claude Code local settings (machine-specific permissions and paths)
 .claude/settings.local.json
