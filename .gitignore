@@ -1,5 +1,8 @@
 # Web project — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-web)
 ai-development-workflow-web/
 
+# POC project — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-poc)
+ai-development-workflow-poc/
+
 # Claude Code local settings (machine-specific permissions and paths)
 .claude/settings.local.json

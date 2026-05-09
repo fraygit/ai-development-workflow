@@ -36,6 +36,8 @@ This is the **AIDevFlow** project — currently in the planning and architecture
 | Folder | Repo | Description |
 |---|---|---|
 | `ai-development-workflow-web/` | [fraygit/ai-development-workflow-web](https://github.com/fraygit/ai-development-workflow-web) | Next.js 15 frontend — tenant dashboard, workflow designer, human gate UI |
+| `ai-development-workflow-poc/` | [fraygit/ai-development-workflow-poc](https://github.com/fraygit/ai-development-workflow-poc) | POC — GitHub Actions + Claude Code CLI + Jira webhook, no platform infrastructure |
+| *(remote only — not cloned locally)* | [fraygit/ai-development-workflow-sample-nodejs](https://github.com/fraygit/ai-development-workflow-sample-nodejs) | POC target app — Hello World Node.js app that the POC workflow clones and modifies |
 
 The remaining monorepo services (`apps/api`, `apps/webhook-receiver`, `apps/compiler`, `packages/*`, `infra/`) will be added as additional sub-project repos as implementation begins, following the Turborepo structure defined in `docs/architecture-design.md`.
 
@@ -79,6 +81,8 @@ The platform is split across multiple Git repositories. The web frontend has alr
 | Folder (local) | GitHub Repo | Status |
 |---|---|---|
 | `ai-development-workflow-web/` | [fraygit/ai-development-workflow-web](https://github.com/fraygit/ai-development-workflow-web) | Active — Next.js 15 frontend |
+| `ai-development-workflow-poc/` | [fraygit/ai-development-workflow-poc](https://github.com/fraygit/ai-development-workflow-poc) | Active — concept POC (GitHub Actions + Claude Code CLI) |
+| *(remote only)* | [fraygit/ai-development-workflow-sample-nodejs](https://github.com/fraygit/ai-development-workflow-sample-nodejs) | Active — POC target app (cloned by the workflow runner, not locally) |
 | *(planning repo root)* | fraygit/ai-development-workflow | Active — design docs + Claude Code skills |
 | `aidevflow/apps/api/` | *(planned)* | Not started — Fastify Coordination API |
 | `aidevflow/apps/webhook-receiver/` | *(planned)* | Not started — Fastify webhook receiver |
@@ -176,6 +180,7 @@ docs/epic/
 | Epic | Index | Stories |
 |---|---|---|
 | Authentication & Onboarding | [docs/epic/authentication-onboarding/0.0-task-breakdown.md](docs/epic/authentication-onboarding/0.0-task-breakdown.md) | 1.0–6.0 (27 tasks) |
+| POC | [docs/epic/poc/0.0-task-breakdown.md](docs/epic/poc/0.0-task-breakdown.md) | 0.0–2.0 (6 tasks) — proves core concept with GitHub Actions + Claude Code CLI |
 
 ### Task file naming convention
 
