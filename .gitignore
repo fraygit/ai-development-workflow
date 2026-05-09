@@ -7,5 +7,11 @@ ai-development-workflow-poc/
 # POC sample app — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-sample-nodejs)
 ai-development-workflow-sample-nodejs/
 
+# Backend monorepo — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-backend)
+ai-development-workflow-backend/
+
+# Web frontend — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-web)
+ai-development-workflow-web/
+
 # Claude Code local settings (machine-specific permissions and paths)
 .claude/settings.local.json

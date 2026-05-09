@@ -37,6 +37,7 @@ This is the **AIDevFlow** project — currently in the planning and architecture
 |---|---|---|
 | `ai-development-workflow-web/` | [fraygit/ai-development-workflow-web](https://github.com/fraygit/ai-development-workflow-web) | Next.js 15 frontend — tenant dashboard, workflow designer, human gate UI |
 | `ai-development-workflow-poc/` | [fraygit/ai-development-workflow-poc](https://github.com/fraygit/ai-development-workflow-poc) | POC — GitHub Actions + Claude Code CLI + Jira webhook, no platform infrastructure |
+| `ai-development-workflow-backend/` | [fraygit/ai-development-workflow-backend](https://github.com/fraygit/ai-development-workflow-backend) | Backend monorepo — Fastify API, Prisma, BullMQ, Webhook Receiver, Compiler |
 | *(remote only — not cloned locally)* | [fraygit/ai-development-workflow-sample-nodejs](https://github.com/fraygit/ai-development-workflow-sample-nodejs) | POC target app — Hello World Node.js app that the POC workflow clones and modifies |
 
 The remaining monorepo services (`apps/api`, `apps/webhook-receiver`, `apps/compiler`, `packages/*`, `infra/`) will be added as additional sub-project repos as implementation begins, following the Turborepo structure defined in `docs/architecture-design.md`.
@@ -82,6 +83,7 @@ The platform is split across multiple Git repositories. The web frontend has alr
 |---|---|---|
 | `ai-development-workflow-web/` | [fraygit/ai-development-workflow-web](https://github.com/fraygit/ai-development-workflow-web) | Active — Next.js 15 frontend |
 | `ai-development-workflow-poc/` | [fraygit/ai-development-workflow-poc](https://github.com/fraygit/ai-development-workflow-poc) | Active — concept POC (GitHub Actions + Claude Code CLI) |
+| `ai-development-workflow-backend/` | [fraygit/ai-development-workflow-backend](https://github.com/fraygit/ai-development-workflow-backend) | Active — backend monorepo (Fastify, Prisma, BullMQ) |
 | *(remote only)* | [fraygit/ai-development-workflow-sample-nodejs](https://github.com/fraygit/ai-development-workflow-sample-nodejs) | Active — POC target app (cloned by the workflow runner, not locally) |
 | *(planning repo root)* | fraygit/ai-development-workflow | Active — design docs + Claude Code skills |
 | `aidevflow/apps/api/` | *(planned)* | Not started — Fastify Coordination API |
