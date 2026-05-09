@@ -112,6 +112,65 @@ ai-development-workflow-web/
 
 ---
 
+## Testing Standards
+
+### TDD Workflow — Red · Green · Refactor
+
+**Write the test before writing the component or function.** Red → Green → Refactor.
+
+1. **Red** — write a test asserting the behaviour you want. Run it — it must fail first.
+2. **Green** — write the minimal component or function that makes it pass.
+3. **Refactor** — clean up while keeping all tests green.
+
+**Test runner:** Vitest + React Testing Library for unit and component tests. Playwright for critical E2E user flows.
+
+**Vitest config (web repo):**
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
+  }
+})
+```
+
+**Run commands:**
+```bash
+npx vitest run          # single run (CI)
+npx vitest              # watch mode (local dev)
+npx playwright test     # E2E
+```
+
+---
+
+### What to Test
+
+| Target | Tool | What to assert |
+|---|---|---|
+| Utility functions (`lib/`) | Vitest | Pure logic, Zod validation, API client shaping |
+| Components with conditional rendering | Vitest + RTL | Loading state, error state, empty state, populated state |
+| Role gates and auth guards | Vitest + RTL | Restricted UI not rendered; correct fallback shown |
+| Forms | Vitest + RTL | Input → submit → API call → success/error state |
+| Critical user flows | Playwright | Sign-up, sign-in, Jira plugin save, human gate approve/reject |
+
+**React Testing Library principles:**
+- Test user-visible behaviour, not implementation details.
+- Query by role, label, or text: `getByRole`, `getByLabelText`, `getByText`. Use `getByTestId` only when no semantic selector exists.
+- Test keyboard navigation alongside click interactions — accessibility is a testing concern, not an afterthought.
+
+**File naming:**
+- `*.test.tsx` co-located with the source file for component and unit tests.
+- `tests/e2e/*.spec.ts` for Playwright E2E tests.
+
+**Playwright scope (MVP):** sign-up flow, sign-in flow, Jira plugin config save, workflow designer save, human gate approve and reject. No visual regression tests for MVP.
+
+---
+
 ## How to Respond to Requests
 
 When the user asks for help with a frontend task:

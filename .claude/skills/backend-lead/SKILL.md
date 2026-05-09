@@ -246,19 +246,87 @@ apps/<service>/
 
 ## Testing Standards
 
-**Unit tests for pure business logic.**
-Service functions that transform data, apply rules, or make decisions are unit-tested in isolation. Inject mock repositories via interfaces — do not hit the DB.
+### TDD Workflow — Red · Green · Refactor
 
-**Integration tests for DB and API behaviour.**
-Route-level integration tests use a real test PostgreSQL instance (not mocks). Test the full request → handler → service → repository → DB → response cycle. This is where RLS correctness and foreign key constraints are verified.
+**Always write the failing test first.**
 
-**Never mock the database for integration tests.**
-Mock DB tests gave false confidence in the past. Integration tests must hit a real DB with real RLS policies applied.
+1. **Red** — write a test that describes the behaviour you want. Run it. It must fail before any implementation exists. A test that passes without implementation is worthless.
+2. **Green** — write the minimal implementation that makes the test pass. Do not over-engineer.
+3. **Refactor** — clean up the implementation (naming, extraction, simplification) while keeping all tests green.
 
-**Test coverage targets:**
-- Business logic (service.ts): 90%+ line coverage
-- Route handlers (handlers.ts): 80%+ — focus on validation and error mapping
-- Repository functions (repository.ts): covered by integration tests, not unit tests
+**Test runner: Vitest.** Not Jest — Vitest has native ESM support, faster cold start, and is compatible with the TypeScript strict config used across this monorepo.
+
+**Standard vitest config (per service):**
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    coverage: {
+      provider: 'v8',
+      thresholds: { lines: 80, functions: 80 }
+    }
+  }
+})
+```
+
+**Run commands:**
+```bash
+npx vitest run          # single run (CI)
+npx vitest              # watch mode (local dev)
+npx vitest run --coverage
+```
+
+---
+
+### Test Types
+
+**Unit tests — pure business logic.**
+Service functions that transform data, apply rules, or make decisions are unit-tested in isolation. Inject mock repositories via interfaces — do not hit the DB. File: `*.test.ts` co-located with source or in `test/unit/`.
+
+**Integration tests — DB and API behaviour.**
+Route-level tests use a real test PostgreSQL instance (`aidevflow_test`) and a real Redis instance. Test the full request → handler → service → repository → DB → response cycle. This is where RLS correctness and foreign key constraints are verified. File: `test/integration/*.test.ts`.
+
+**Never mock the database in integration tests.**
+Integration tests must hit a real DB with real RLS policies applied. Mocked DB tests have caused migrations to pass while production queries failed — this is a resolved incident, not a preference.
+
+---
+
+### Mocking Pattern (Dependency Inversion)
+
+Inject repository interfaces into service functions. In unit tests, pass a mock object that implements the same interface. **Never mock Prisma directly.**
+
+```ts
+// service.ts
+interface TenantRepository {
+  findByClerkOrgId(clerkOrgId: string): Promise<Tenant | null>
+  create(data: CreateTenantData): Promise<Tenant>
+}
+
+export function createTenantService(repo: TenantRepository) {
+  return { createTenant: async (clerkOrgId: string, name: string) => { ... } }
+}
+
+// service.test.ts
+const mockRepo: TenantRepository = {
+  findByClerkOrgId: vi.fn().mockResolvedValue(null),
+  create: vi.fn().mockResolvedValue({ id: 'uuid-1', ... }),
+}
+const service = createTenantService(mockRepo)
+```
+
+---
+
+### Test Coverage Targets
+
+| Layer | Target | Test type |
+|---|---|---|
+| `service.ts` (business logic) | 90%+ line coverage | Unit |
+| `handlers.ts` (route handlers) | 80%+ — validation + error mapping | Integration |
+| `repository.ts` (DB queries) | Covered by integration tests, not unit tests | Integration |
+| `middleware/` (auth, plan limits) | 90%+ — every branch | Unit + Integration |
 
 ---
 
