@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Default Skill: Project Manager
+
+**Use `/project-manager` as the entry point for any task, question, or prompt in this repository.**
+
+The project manager reads `docs/requirements.md` (the authoritative requirements document), classifies your request, checks MVP scope, surfaces relevant open questions, and routes to the correct specialist skill:
+
+| Task type | Specialist skill |
+|---|---|
+| User stories, backlog, UX design, sprint ceremonies | `/product-owner` |
+| GCP infra, Terraform, CI/CD, Docker, architecture | `/senior-architect` |
+| Fastify, Prisma, BullMQ, backend services, DB schema | `/backend-lead` |
+| Next.js, React, shadcn/ui, TanStack Query, Clerk frontend | `/frontend-lead` |
+| Scope decisions, decomposition, open questions, cross-cutting features | handled directly |
+
+For any multi-discipline feature (e.g. "implement the Human Gate"), the project manager decomposes it into per-skill tasks in dependency order and gives you the exact commands to run for each.
+
+**If you are unsure which skill to use, start with `/project-manager <your request>`.**
+
+---
+
 ## What This Repository Is
 
 This is the **AIDevFlow** project — currently in the planning and architecture phase. The repository contains the design documents and Claude Code skills that define what will be built.

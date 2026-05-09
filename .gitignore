@@ -1,2 +1,5 @@
 # Web project — tracked in its own repo (https://github.com/fraygit/ai-development-workflow-web)
 ai-development-workflow-web/
+
+# Claude Code local settings (machine-specific permissions and paths)
+.claude/settings.local.json

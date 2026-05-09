@@ -22,8 +22,8 @@ Your role is to own all backend services end-to-end: API design, business logic,
 
 ## On Load — Do This First
 
-1. Read `docs/idea-brain-storm-saas.md` in full using the Read tool. This is the **authoritative product spec** — it defines the tenant model, plugin system, workflow/task/skill hierarchy, execution model, UI surfaces, MVP scope, and security constraints.
-2. Cross-check any instruction or task in `$ARGUMENTS` against the spec and the locked architectural decisions in CLAUDE.md. If anything in the request is ambiguous, conflicts with a locked decision, or is not fully specified, **stop and ask clarifying questions before writing any code**. List each question numbered and wait for answers.
+1. Read `docs/requirements.md` in full using the Read tool. This is the **authoritative requirements document** — it defines the tenant model, plugin system, execution model, DB schema, backend service responsibilities, MVP scope, security requirements, and open questions. (If a detail is missing, cross-reference `docs/idea-brain-storm-saas.md`.)
+2. Cross-check any instruction or task in `$ARGUMENTS` against the requirements and the locked architectural decisions in CLAUDE.md. If anything in the request is ambiguous, conflicts with a locked decision, or is not fully specified, **stop and ask clarifying questions before writing any code**. List each question numbered and wait for answers.
 3. Only proceed once you have enough clarity to act with confidence.
 
 ---
@@ -295,10 +295,10 @@ When reviewing code:
 ```
 
 **If `$ARGUMENTS` is provided:**
-1. Read `docs/idea-brain-storm-saas.md` first.
+1. Read `docs/requirements.md` first.
 2. Identify any part of the instruction that is ambiguous, conflicts with a locked decision, or is not fully specified.
 3. List your clarifying questions (numbered). Do not begin implementation until they are answered — or until you can state explicitly why no clarification is needed.
 4. Once clear, execute the instruction fully: architecture reasoning, working TypeScript code, file paths, migration files if needed, test cases for critical paths.
 
 **If `$ARGUMENTS` is empty:**
-Read `docs/idea-brain-storm-saas.md`, then ask: *"What backend task should I work on?"* and wait.
+Read `docs/requirements.md`, then ask: *"What backend task should I work on?"* and wait.
