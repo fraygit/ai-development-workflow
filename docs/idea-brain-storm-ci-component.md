@@ -30,7 +30,7 @@ Teams write the workflow format they already know. AIDevFlow provides the AI tas
 │  ┌──────────────────────────────────────────────────┐   │
 │  │  CI COMPONENT  (uses: aidevflow/analyze@v1)       │   │
 │  │  The task — provided by AIDevFlow                 │   │
-│  │  Handles: spawning Claude Code, capturing output, │   │
+│  │  Handles: spawning Codex CLI, capturing output,   │   │
 │  │  Jira integration, error handling                 │   │
 │  │                                                   │   │
 │  │  ┌─────────────────────────────────────────────┐ │   │
@@ -87,19 +87,31 @@ The only infrastructure beyond GitHub Secrets is a small webhook handler that re
 Jira fires webhook on new comment
         │
         ▼
-Bridge (~30 lines — Cloudflare Worker or similar)
-  ├── Validates Jira HMAC signature
-  ├── Checks comment author is an authorised approver
-  ├── Parses !approve or !reject: <feedback>
-  ├── Reads routing context from the hidden JSON in the last aidevflow comment
+Bridge (~60 lines — Cloudflare Worker or similar)
+  ├── Validates Jira HMAC-SHA256 signature → reject 401 if invalid
+  ├── Checks comment author accountId is in AIDEVFLOW_APPROVERS → ignore if not
+  ├── Parses command: !approve | !reject: <feedback> | !retry → ignore everything else
+  ├── Finds last aidevflow comment on the ticket (posted by JIRA_SERVICE_ACCOUNT_ID only)
+  ├── Validates hidden JSON author === JIRA_SERVICE_ACCOUNT_ID → rejects spoofed JSON
+  ├── Validates ticket's Jira project matches hidden JSON project field
+  ├── Checks iteration count: if iteration >= max_iterations → post cap message, return 200, stop
+  ├── Signs dispatch payload with HMAC-SHA256 using BRIDGE_SECRET
   └── Calls GitHub API:
-      POST /repos/{owner}/{repo}/dispatches        ← repo from hidden comment
+      POST /repos/{owner}/{repo}/dispatches        ← repo from hidden JSON
       { event_type: "aidevflow-resume",
-        client_payload: { ticket, action, feedback } }
+        client_payload: { ticket, action, feedback, iteration, signature } }
         │
         ▼
 Run 2 fires via repository_dispatch in the correct repo
 ```
+
+**Supported commands — all require the comment author to be in `AIDEVFLOW_APPROVERS`:**
+
+| Comment | Bridge action |
+|---|---|
+| `!approve` | Dispatch `action: approve` → `implement` creates branch, runs Codex, creates PR |
+| `!reject: <reason>` | Dispatch `action: reject` with feedback → `implement` re-analyses, posts revised proposal |
+| `!retry` | Dispatch `action: retry` → `implement` re-enters normal flow (used after branch collision or any stalled run) |
 
 The bridge is shared per organisation — deployed once (one-click or hosted), pointed to by the Jira webhook. No CLI command needed.
 
@@ -115,12 +127,23 @@ handle the case where userId is undefined before calling the DB.
 
 Reply !approve to implement, or !reject: <reason> to request changes.
 
-<!-- aidevflow: {"repo":"myorg/my-service","run":"gh-run-12345678","project":"PROJ"} -->
+<!-- aidevflow: {"repo":"myorg/my-service","run":"gh-run-12345678","project":"PROJ","iteration":1,"max_iterations":5} -->
 ```
 
-The HTML comment is invisible to engineers in Jira's UI. When `!approve` arrives, the bridge reads the last aidevflow comment on the ticket, parses the hidden JSON, and dispatches to the exact repo that ran the analysis. No org-level mapping variables. No custom Jira fields. No per-ticket configuration. The routing context travels inside the Jira thread.
+The HTML comment is invisible to engineers in Jira's UI. When a command arrives, the bridge reads the last aidevflow comment on the ticket, parses the hidden JSON, and dispatches to the exact repo that ran the analysis. No org-level mapping variables. No custom Jira fields. No per-ticket configuration. The routing context travels inside the Jira thread.
 
-The `project` field in the hidden JSON is used by the bridge as a validation check — it confirms the incoming `!approve` belongs to a ticket that this repo claimed, preventing cross-repo approval injection.
+**Hidden JSON field reference:**
+
+| Field | Set by | Purpose |
+|---|---|---|
+| `repo` | `analyze` | Target repository for `repository_dispatch` |
+| `run` | `analyze` | GitHub run ID for traceability |
+| `project` | `analyze` | Jira project key — bridge validates incoming ticket matches |
+| `iteration` | `implement` (incremented on each `!reject`) | Current revision count |
+| `max_iterations` | `analyze` (from `max_iterations` input) | Cap carried forward through the thread |
+| `state` | `implement` (on branch collision) | `branch_collision` — tells bridge `!retry` is a re-trigger |
+
+On `!reject`, `implement` increments `iteration` and embeds the updated JSON in the revised proposal. The bridge reads the latest count before each dispatch and blocks if `iteration >= max_iterations`.
 
 ### Authorised approvers
 
@@ -207,15 +230,16 @@ Outputs: `status` (`ready` | `needs_clarification`), `proposed_solution`, `clari
 
 #### `aidevflow/implement@v1`
 
-Triggered by `repository_dispatch` from the bridge on `!approve`. If triggered by `!reject: <feedback>`, re-runs the analysis with the feedback injected and posts a revised proposal — it does not implement until an `!approve` is received.
+Triggered by `repository_dispatch` from the bridge on `!approve`, `!reject`, or `!retry`. On `!reject`, it re-runs analysis with the feedback injected and posts a revised proposal. On `!retry`, it re-enters the normal implementation flow.
 
 ```yaml
 # Run 2 workflow — triggered by bridge, not manually
 - uses: aidevflow/implement@v1
   with:
     ticket_id: ${{ github.event.client_payload.ticket }}
-    action: ${{ github.event.client_payload.action }}       # approve | reject
-    feedback: ${{ github.event.client_payload.feedback }}   # populated on reject
+    action: ${{ github.event.client_payload.action }}                  # approve | reject | retry
+    feedback: ${{ github.event.client_payload.feedback }}              # populated on reject
+    dispatch_signature: ${{ github.event.client_payload.signature }}   # HMAC — verified first
     branch_prefix: fix          # fix/ | feature/ | chore/ — default: fix
     create_pr: true
     model: ${{ vars.AIDEVFLOW_MODEL }}
@@ -225,6 +249,7 @@ Triggered by `repository_dispatch` from the bridge on `!approve`. If triggered b
 ```
 
 Branch name is automatically formatted as `{branch_prefix}/{ticket_id}` (e.g. `fix/PROJ-123`).
+`max_iterations` is read from the hidden JSON in the Jira thread — set by `analyze` and carried forward automatically.
 
 Outputs: `branch`, `commit_sha`, `pr_url`
 
@@ -236,7 +261,7 @@ For teams that need steps the high-level components don't cover, or want to comp
 
 | Component | What it does | Key inputs | Outputs |
 |---|---|---|---|
-| `aidevflow/skill` | Runs any versioned skill via Claude Code or Codex | `skill`, `inputs`, `api_key` | skill-defined outputs |
+| `aidevflow/skill` | Runs any versioned skill via Codex CLI | `skill`, `inputs`, `api_key`, `model` | skill-defined outputs |
 | `aidevflow/jira-get-ticket` | Fetches Jira ticket fields | `ticket_id`, `token` | `summary`, `description`, `status`, `assignee` |
 | `aidevflow/jira-comment` | Posts a comment on a Jira ticket | `ticket_id`, `body`, `token` | — |
 | `aidevflow/jira-transition` | Moves a Jira ticket to a new status | `ticket_id`, `status`, `token` | — |
@@ -260,9 +285,13 @@ on:
         description: Jira ticket ID (e.g. PROJ-123)
         required: true
 
+permissions:
+  contents: read    # checkout only — no write access needed
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: aidevflow/analyze@v1
@@ -271,6 +300,7 @@ jobs:
           jira_project: PROJ                           # validation — matches this repo to PROJ tickets
           approvers: ${{ vars.AIDEVFLOW_APPROVERS }}   # org variable — set once, used everywhere
           model: ${{ vars.AIDEVFLOW_MODEL }}           # org variable — openai | anthropic
+          max_iterations: 5                            # optional — default 5
           jira_token: ${{ secrets.JIRA_TOKEN }}
           api_key: ${{ secrets.AI_API_KEY }}
       # Exits cleanly. Posts proposal + hidden routing JSON to Jira. Next action: engineer replies.
@@ -278,15 +308,24 @@ jobs:
 
 ```yaml
 # .github/workflows/aidevflow-implement.yml
-# Triggered automatically by the bridge when engineer replies !approve or !reject on Jira
+# Triggered automatically by the bridge when engineer replies !approve, !reject, or !retry on Jira
 name: AIDevFlow — Implement
 on:
   repository_dispatch:
     types: [aidevflow-resume]
 
+permissions:
+  contents: write        # branch creation and commits
+  pull-requests: write   # PR creation
+
+concurrency:
+  group: aidevflow-implement-${{ github.event.client_payload.ticket }}
+  cancel-in-progress: false   # queue, don't cancel — avoid duplicate runs racing
+
 jobs:
   implement:
     runs-on: ubuntu-latest
+    timeout-minutes: 30    # backstop — internal 25 min timeout fires first
     steps:
       - uses: actions/checkout@v4
       - uses: aidevflow/implement@v1
@@ -294,6 +333,7 @@ jobs:
           ticket_id: ${{ github.event.client_payload.ticket }}
           action: ${{ github.event.client_payload.action }}
           feedback: ${{ github.event.client_payload.feedback }}
+          dispatch_signature: ${{ github.event.client_payload.signature }}
           branch_prefix: fix
           create_pr: true
           model: ${{ vars.AIDEVFLOW_MODEL }}
@@ -366,10 +406,14 @@ jobs:
             ${{ steps.analysis.outputs.proposed_solution }}
 
             Reply `!approve` to implement, or `!reject: <reason>` to request changes.
+
+            <!-- aidevflow: {"repo":"${{ github.repository }}","run":"${{ github.run_id }}","project":"PROJ","iteration":1,"max_iterations":5} -->
           token: ${{ secrets.JIRA_TOKEN }}
 ```
 
 The primitive path gives full visibility and control. Both paths use the same versioned skills.
+
+> **Note for custom pipelines:** the hidden JSON comment is mandatory — the bridge reads it to route `!approve` / `!reject` / `!retry` to the correct repository. Omitting it means the bridge cannot dispatch Run 2.
 
 ---
 
@@ -401,15 +445,16 @@ implement-fix:
   extends: .aidevflow-implement
   variables:
     TICKET_ID: $AIDEVFLOW_TICKET
-    ACTION: $AIDEVFLOW_ACTION         # approve | reject
+    ACTION: $AIDEVFLOW_ACTION          # approve | reject | retry
     FEEDBACK: $AIDEVFLOW_FEEDBACK
+    DISPATCH_SIGNATURE: $AIDEVFLOW_SIGNATURE
     BRANCH_PREFIX: fix
     CREATE_PR: "true"
-    APPROVERS: $AIDEVFLOW_APPROVERS
     MODEL: $AIDEVFLOW_MODEL
     JIRA_TOKEN: $JIRA_TOKEN
     AI_API_KEY: $AI_API_KEY
     GITHUB_TOKEN: $GITHUB_TOKEN
+    # APPROVERS not needed here — bridge already validated the author before dispatching
 ```
 
 Same two-run model. On GitLab, the bridge calls the GitLab Pipeline Trigger API instead of GitHub's `repository_dispatch`.
@@ -547,20 +592,223 @@ Adopting teams need none of these. Their entire interaction with AIDevFlow is:
 
 ## Known Gaps
 
-Things the current design does not yet answer.
-
-| Gap | Detail | Priority |
+| Gap | Status | Priority |
 |---|---|---|
-| Codebase context for `implement` | Codex needs to understand repo structure, conventions, and patterns before it can implement. `checkout@v4` gives it the files, but how does the component generate or validate an `AGENTS.md`? Does it auto-generate one from the repo? Use the existing one? This is the most underdocumented assumption in the design. | High |
-| Codex failure handling | If Codex exits non-zero, times out, or produces no useful output, the runner fails silently. Engineers won't know unless they check GitHub Actions. The component must post a failure comment to Jira with a direct link to the failed run log. | High |
-| `!reject` iteration cap | No documented maximum on the reject→revise loop. Without a cap, a ticket can cycle indefinitely. Default should be 5 iterations; on limit reached, post "Maximum revisions reached — please assign this ticket manually" to Jira. | High |
-| Branch collision | If `fix/PROJ-123` already exists when `implement` runs, the step fails without a useful error. Component must detect this early and post a "branch already exists" comment to Jira rather than leaving the runner in a broken state. | Medium |
-| PR already exists on re-run | On `!reject` → `!approve`, if a PR from an earlier iteration exists, the component must detect and update it rather than attempting to open a duplicate. | Medium |
-| Jira ticket lifecycle after PR | The flow stops at PR creation. Who transitions the ticket from "In Progress" to "In Review"? Who closes it on merge? A third workflow triggered by the PR merge event (`on: pull_request: types: [closed]`) is the natural answer — not documented. | Medium |
-| Duplicate `!approve` | If an engineer posts `!approve` twice, the bridge fires twice and two implement runs start in parallel, creating two branches and two PRs. The bridge needs deduplication — track the last-processed comment ID per ticket. | Medium |
-| Run 1 trigger UX | Currently `workflow_dispatch` — engineer must navigate to GitHub Actions UI, find the workflow, type the ticket ID, and click Run. This is friction. Not documented as a known v1 limitation or what v2 auto-trigger looks like. | Low |
-| Cost attribution | One `AI_API_KEY` across the org. Large orgs need per-team or per-project cost visibility. Could be addressed with separate API keys per team, or by tagging Codex runs with a project label. | Low |
-| `AGENTS.md` content standard | No specification for what a valid `AGENTS.md` must contain for the skill to work correctly. Needs a documented minimum template that teams add to their repo. | Low |
+| Codebase context for `implement` | **Resolved** — see Component Behaviour Spec below | High |
+| Codex failure handling | **Resolved** — see Component Behaviour Spec below | High |
+| `!reject` iteration cap | **Resolved** — default 5, configurable | High |
+| Branch collision | **Resolved** — cancel + `!retry` flow | Medium |
+| PR already exists on re-run | **Resolved** — increment suffix + Jira warning | Medium |
+| Jira ticket lifecycle after PR | Open — third workflow on PR merge event not yet designed | Medium |
+| Duplicate `!approve` | Open — bridge deduplication via last-processed comment ID not yet implemented | Medium |
+| Run 1 trigger UX | Open — v1 is manual `workflow_dispatch`; v2 auto-trigger on Jira assignment | Low |
+| Cost attribution | Open — single `AI_API_KEY` for now; per-team keys or cost tags deferred | Low |
+
+---
+
+## Component Behaviour Specification
+
+Detailed behaviour decisions for the resolved gaps above.
+
+---
+
+### Codebase context for `implement` — AGENTS.md strategy
+
+Codex reads `AGENTS.md` in the repo root for project context. Skills are not copied anywhere — they are downloaded from the registry at runtime, rendered into a prompt string, and passed to `codex` via the `-q` flag. Codex never reads the skill YAML as a file.
+
+**`codex init` is NOT run inside the pipeline.** It is run once by the team as a setup step, the result committed to the repo's default branch, and reused on every subsequent run. Running it in the pipeline would cost extra AI tokens, add latency, and be discarded at runner teardown.
+
+**Documented per-repo setup step (in README):**
+```bash
+# One-time setup — run locally, commit result
+codex init
+git add AGENTS.md
+git commit -m "chore: add AGENTS.md for aidevflow"
+git push
+```
+
+**If `AGENTS.md` is missing at implement time** — the component writes a minimal deterministic fallback (no AI call, zero tokens) and posts a warning to Jira:
+
+```markdown
+# Project Context
+
+No AGENTS.md found in this repository. Codex will rely on file discovery.
+Run `codex init` locally and commit the result to improve implementation quality.
+
+## Instructions
+- Follow existing code style and patterns you observe in the repository
+- Make only the changes needed for the approved task — no scope creep
+- Do not modify test files unless the task explicitly requires it
+- Do not add new dependencies without justification
+- Do not read or write files matching .aidevflowignore patterns
+```
+
+Jira warning comment:
+```
+⚠️ No AGENTS.md found in this repository. A minimal fallback was used.
+Run `codex init` locally and commit the result for better implementation quality.
+Implementation is proceeding — review the PR carefully.
+```
+
+---
+
+### Codex failure handling — timeout + try/catch
+
+**Job-level timeout** (in the workflow YAML teams copy):
+```yaml
+jobs:
+  implement:
+    timeout-minutes: 30    # backstop — kills the runner; no Jira notification possible
+```
+
+**Internal subprocess timeout** at 25 minutes — fires 5 minutes before the job timeout, giving the catch block time to post to Jira before the runner is killed:
+
+```
+Job timeout: 30 min  ← backstop — no Jira notification (acceptable for catastrophic hangs)
+  └── Internal timeout: 25 min  ← try/catch fires, Jira notified
+        └── try/catch wraps all operations
+              ├── success  → Jira success comment → exit 0
+              └── any error → Jira failure comment + run URL → core.setFailed() → exit 1
+```
+
+**`currentStep` tracking** — a mutable string updated before each major operation so the failure comment tells the engineer exactly where it broke:
+
+| `currentStep` | Jira failure message |
+|---|---|
+| `fetching-ticket` | "Could not fetch ticket from Jira — check JIRA_TOKEN permissions" |
+| `running-codex` | "Codex timed out — task may be too large or complex for a single run" |
+| `codex-non-zero` | "Codex could not complete the implementation — see run logs" |
+| `scanning-output` | "Secret pattern detected in Codex output — implementation aborted for safety" |
+| `git-push` | "Could not push to branch — check branch protection rules or token scope" |
+| `creating-pr` | "Code committed but PR creation failed — branch is ready at `fix/PROJ-123`" |
+
+Every Jira failure comment includes the run URL:
+```
+❌ Implementation failed at step: {currentStep}
+{specific message}
+View run logs: https://github.com/{repo}/actions/runs/{run_id}
+```
+
+---
+
+### `!reject` iteration cap — default 5, configurable
+
+The iteration count is stored in the hidden JSON embedded in each aidevflow Jira comment. Each time `implement` posts a revised proposal (on `!reject`), it increments the counter:
+
+```
+<!-- aidevflow: {"repo":"...","run":"...","project":"PROJ","iteration":2,"max_iterations":5} -->
+```
+
+**Configurable via the workflow file:**
+```yaml
+- uses: aidevflow/analyze@v1
+  with:
+    max_iterations: 5     # default — how many !reject loops before giving up
+```
+
+**When `iteration >= max_iterations`** — the `implement` action posts to Jira and exits without producing a revised proposal:
+```
+⛔ Maximum revisions reached (5/5) for PROJ-123.
+The AI was unable to produce an approved solution within the revision limit.
+Please assign this ticket manually or re-trigger with a clearer acceptance criterion.
+```
+
+The bridge also checks the counter before dispatching. If the hidden JSON shows `iteration >= max_iterations`, the bridge rejects the dispatch, posts the cap message directly, and returns 200 without calling the GitHub API.
+
+---
+
+### Branch collision — cancel and wait for `!retry`
+
+When `implement` detects that the target branch already exists:
+
+1. Post to Jira (with hidden routing JSON for `!retry` routing):
+```
+⏸ Implementation paused — branch `fix/PROJ-123` already exists.
+
+Please resolve the conflict:
+- Merge or delete the existing branch, then reply `!retry` to continue.
+- Or close this ticket if the existing branch covers the work.
+
+<!-- aidevflow: {"repo":"...","run":"...","project":"PROJ","iteration":1,"state":"branch_collision"} -->
+```
+2. Exit cleanly (exit 0 — this is an expected state, not a failure).
+
+**Bridge change required:** the bridge must recognise `!retry` as a valid command alongside `!approve` and `!reject`. On `!retry`, it reads the hidden JSON (which now includes `"state":"branch_collision"`) and dispatches `action: retry` to `implement`.
+
+**`implement` on `action: retry`:**
+1. Verify dispatch signature (same as all other actions)
+2. Re-check if the branch still exists
+   - Still exists → post same collision comment again → exit 0
+   - Gone → proceed normally: create branch → implement → PR → Jira success comment
+
+`!retry` is also valid as a general re-trigger command outside the branch collision context — any `!retry` comment on a ticket with a valid aidevflow routing comment will re-dispatch to `implement`.
+
+---
+
+### PR already exists — increment suffix + Jira warning
+
+When `implement` is about to create a PR and detects one already exists for this ticket:
+
+1. Scan for branches matching `fix/PROJ-123*` — find the highest suffix
+2. Use the next suffix: `fix/PROJ-123-2`, `fix/PROJ-123-3`, etc.
+3. Create a new branch with the incremented name
+4. Implement on the new branch
+5. Create the new PR with title: `[PROJ-123] <description> (attempt 2)`
+6. Post to Jira:
+```
+⚠️ A PR already existed for this ticket. A new implementation has been created.
+
+Previous PR: https://github.com/org/repo/pull/47
+New PR:      https://github.com/org/repo/pull/52
+
+Please close the previous PR if it has been superseded. The team should review
+and merge the appropriate PR — no auto-merge will occur.
+```
+
+**Why not update the existing PR?** Pushing new commits onto an existing implementation creates a layered diff that is confusing to review. A clean branch with a fresh implementation history is easier for the team to evaluate. The team reviews both PRs and closes the superseded one — this is a low-friction operation.
+
+**Why not block and wait for `!retry`?** The PR already exists but the team may still want a fresh implementation (e.g., after feedback changed the approach). Creating the new PR and warning on Jira lets the team decide which version to merge without requiring another round-trip command.
+
+---
+
+### `.aidevflowignore` — restricting Codex file access
+
+Codex CLI running on a checked-out repo can read any file in the working tree. `.aidevflowignore` prevents it from reading or writing sensitive or irrelevant files.
+
+**Format:** gitignore-style patterns, one per line. File lives at the repo root alongside `.gitignore`.
+
+```
+# .aidevflowignore — files Codex must not read or write
+.env
+.env.*
+**/*.pem
+**/*.key
+**/*credentials*
+**/*secrets*
+**/node_modules/**
+**/dist/**
+```
+
+**Enforcement:** the `implement` component reads `.aidevflowignore` before invoking Codex and prepends a hard instruction to the rendered skill prompt:
+
+```
+IMPORTANT: You must not read, reference, or modify any file matching these patterns:
+.env, .env.*, **/*.pem, **/*.key, ...
+If the task requires changes to a restricted file, stop and explain why in your response.
+```
+
+This is prompt-level enforcement — Codex is instructed, not blocked at the OS level. It covers the common case (AI following instructions). Teams with stricter requirements can supplement with OS-level file permission restrictions in a custom runner image.
+
+**Default patterns** (applied even if `.aidevflowignore` does not exist):
+```
+.env
+.env.*
+**/*.pem
+**/*.key
+**/*secret*
+**/*credential*
+**/*password*
+```
 
 ---
 
@@ -605,6 +853,8 @@ The HMAC secret is a shared credential between Jira and the bridge. If it leaks,
 
 ---
 
+## Open Questions
+
 | Question | Options | Leaning |
 |---|---|---|
 | Bridge hosting | Self-hosted Cloudflare Worker vs hosted at `bridge.aidevflow.io` | Offer both — hosted for zero-config start, self-hosted for data-residency orgs |
@@ -617,3 +867,5 @@ The HMAC secret is a shared credential between Jira and the bridge. If it leaks,
 | Primitive components | Ship alongside high-level, or later? | Alongside — `aidevflow/skill` is needed internally anyway |
 | Initial trigger | Manual `workflow_dispatch` vs auto on Jira assignment | Manual first — prove the loop, add auto-trigger in v2 |
 | GitLab CI component registry | `gitlab.com/aidevflow` group | Yes — native GitLab component catalog, zero extra infrastructure |
+| `max_iterations` default | 3 vs 5 | 5 — gives enough cycles without open-ended loops; configurable per workflow |
+| `!retry` scope | Branch collision only vs general re-trigger | General re-trigger — any `!retry` on a valid aidevflow comment re-dispatches |
